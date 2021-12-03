@@ -1,0 +1,1542 @@
+#include "mbed.h"
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <ctype.h>
+#include <stdio.h>
+
+DigitalIn enter(PTB8);
+DigitalIn pushX(PTB9);
+DigitalIn pushY(PTB10);
+Serial pc(USBTX, USBRX);
+AnalogIn micro(PTB0);
+
+PwmOut servo(PTE20);
+
+Timer t;
+
+DigitalOut a1(PTC12);  //pin a del display 1
+DigitalOut b1(PTC13);
+DigitalOut c1(PTD4);
+DigitalOut d1(PTA12);
+DigitalOut e1(PTA4);
+DigitalOut f1(PTA5);
+DigitalOut g1(PTC8);
+
+DigitalOut a2(PTC7);  //pin a del display 2
+DigitalOut b2(PTC0);
+DigitalOut c2(PTC3);
+DigitalOut d2(PTC4);
+DigitalOut e2(PTC5);
+DigitalOut f2(PTC6);
+DigitalOut g2(PTC10);
+
+struct Def_Coordenadas
+{
+    char x,y;
+    int Puntos;
+};
+
+typedef struct Def_Coordenadas COOR;
+
+void Calamardo1();
+void Calamardo2();
+int PvP_Batalla();
+void Hacer_Mapita(char Mapita[22][43]);
+void Imprimir_Mapita(char Mapita[22][43]);
+void Primer_Jugada(char Mapita[22][43]);
+int Hacer_jugada(char Mapita[22][43], int *Contador, COOR *Jugador, int *Salir);
+void Obtener_Puntos(char Mapita[22][43], int *Ganar1, int *Ganar2, int *Elim1, int *Elim2, COOR Jugador, int Contador); //Validar puntajes o condiciones para ganar
+int RecursivaHor1(char Mapita[22][43], int i, int j,  int *Puntos1, int *ContadorX1, int *ContadorX2 ); //Validar si hay puntos o piezas comidas en horizontal para jugador 1
+int RecursivaVer1(char Mapita[22][43], int i, int j,  int *Puntos1, int *ContadorX1, int *ContadorX2 ); //Validar si ha puntos o piezas comidas en vertical para jugador 1
+int RecursivaDiagoH1(char Mapita[22][43], int i, int j, int *Puntos1, int *ContadorX1, int *ContadorX2 );//Validar si hay puntos o piezas comidas en diagonal para jugador 1
+int RecursivaDiagoV1(char Mapita[22][43], int i, int j, int *Puntos1, int *ContadorX1, int *ContadorX2 );//Validar si hay puntos o piezas comidas en diagonal para jugador 1
+int RecursivaHor2(char Mapita[22][43], int i, int j, int *Puntos2, int *ContadorX1, int *ContadorX2 ); //Validar si hay puntos o piezas comidas en horizontal para jugador 2
+int RecursivaVer2(char Mapita[22][43], int i, int j, int *Puntos2,  int *ContadorX1, int *ContadorX2);//Validar si ha puntos o piezas comidas en vertical para jugador 2
+int RecursivaDiagoH2(char Mapita[22][43], int i, int j, int *Puntos2, int *ContadorX1, int *ContadorX2 );//Validar si hay puntos o piezas comidas en diagonal para jugador 2
+int RecursivaDiagoV2(char Mapita[22][43], int i, int j, int *Puntos2,  int *ContadorX1, int *ContadorX2);//Validar si hay puntos o piezas comidas en diagonal para jugador 2
+int Validar_Jugada(char Mapita[22][43], int x, int y, int *Minimo, COOR Jugador);
+
+void Bob();
+void Instructivo();
+int SensorInicio();
+void RobotInicio();
+int CoordenadaX();
+int CoordenadaY();
+
+int main(int argc, char *argv[]) {
+        while(1) {
+            a1=0;
+            b1=0;
+            c1=0;
+            d1=0;
+            e1=0;
+            f1=0;
+            g1=0;
+            a2=0;
+            b2=0;
+            c2=0;
+            d2=0;
+            e2=0;
+            f2=0;
+            g2=0;
+            Bob();
+            if(SensorInicio()==1)
+            { 
+                servo.period_ms(0.020);
+                t.start();
+                RobotInicio();
+                t.stop();
+                printf("\x1b[2J"); //system(clear)
+                printf("\033[1;1H"); //Que el cursor se regrese al principio de la terminal despues del clear
+                printf("\n\rEl juego tardo %f segundos en inicializarse\n\n\r",t.read());
+                Instructivo();
+                PvP_Batalla(); //Tengo que agregar en esta funcion la función que controla al robot
+          }
+        }   
+}
+
+void Instructivo()
+{
+    int push=0;
+    printf("\rReglas del juego:\n");
+    printf("\rLos jugadores se alternan para colocar 'piedras' en las interseciones libres del tablero. \n\rEn este caso las piedras del jugador uno estan representadas por O y las del jugador dos X, mientras que las intersecciones libres estan representadas por un + \n\rEl objetivo del juego es alinear cinco piedras del mismo tipo de forma horizontal, vertical o diagonal.\n\r Es posible comer fichas del otro jugador y eliminarlas del tablero, si las atrapas entre dos piedras del otro jugador\n\rsolamente se puede comer si hay dos piedras juntas del oponente. No se puede comer si hay menos o mas de 3 fichas juntas\n\rEn el primer turno del jugador uno, no puede poner una ficha a 3 o menos bloques de distancia del centro.\n");
+    printf("\rSi se come: XOOX ---> X_ _X\n");
+    printf("\rNo se come : XOX ---> X_X\n");
+    printf("\rHay tres formas de ganar el juego: Haciendo una fila de 5 fichas, creando 5 filas de 4 fichas o comiendo\n\rfichas de tu oponente en 5 ocasiones distintas\n");
+    printf("\rPresiona el boton 'enter' para comenzar el juego...\n");  
+    enter.mode(PullUp);
+    while(push!=1)
+    {
+        push=enter;
+        wait(0.2);    
+    }
+}
+
+void Bob()
+{
+    printf("\x1b[2J");
+    printf("\033[1;1H");
+    printf("\n\r    UBA, TE GUSTA NUESTRO TRABAJO FINAL?\n");
+    printf("\r        LO HICIMOS CON NUESTRAS LAGRIMAS\n");
+    printf("\r           .--..--..--..--..--..--. \n");
+    printf("\r         .' |  (`._   (_)     _   | \n");
+    printf("\r       .'    |  '._)         (_)  | \n");
+    printf("\r       | _.')|         --..---.   / \n");
+    printf("\r       |(_.'  |    /    .-|-.  |  | \n");
+    printf("\r       |     0|    |--.( O| O).| o| \n");
+    printf("\r        |  _  |  .-|.____.'._.-.  | \n");
+    printf("\r        | (_) | o '.;     -`..-`  | \n");
+    printf("\r         |    |     .--------    / \n");
+    printf("\r         |    |    / |_||_| /    | \n");
+    printf("\r         | o  |    |_______/     | \n");
+    printf("\r         |.-.  |     `-.-'    O  | \n");
+    printf("\r       _.'  .' | .--.--.--.--.  /-._ \n");
+    printf("\r     .'..-.-...'""''---''--'-''.'',,. `-'. \n");
+    printf("\r  ....''                             ''''.... \n");
+    printf("\r  |          .                   .          | \n");
+    printf("\r  ''''...'.'' |                 | ''.'...'''' \n");
+    printf("\r              /                 / \n");
+    printf("\r              |                 | \n");
+    printf("\r              /                 | \n");
+    printf("\r              /                 / \n");
+    printf("\r              /                 | \n");
+    printf("\r              /..-..-..-..-..-..- \n");
+}
+
+int PvP_Batalla()
+{
+    COOR Jugador;
+    int push=0, Contador=0, Ganar1=0, Ganar2=0, Elim1=0, Elim2=0, y=21, x=11, Minimo=0, Salir=0;
+    char Mapita[22][43];
+    Hacer_Mapita(Mapita);
+    Imprimir_Mapita(Mapita);
+    printf("\n\rJugador 1, presiona el boton 'enter' para hacer la primer jugada.\n");
+    enter.mode(PullUp);
+    while(push!=1)
+    {
+        push=enter;
+        wait(0.2);    
+    }
+    Primer_Jugada(Mapita);
+    Contador++;
+    Imprimir_Mapita(Mapita);
+    do
+      {
+    Salir=0;
+    Minimo=0;
+    Hacer_jugada(Mapita, &Contador, &Jugador, &Salir);
+    if(Salir==-99)
+      {
+        if(Contador%2==0 && Mapita[Jugador.y][Jugador.x]=='O')
+          {
+        Mapita[Jugador.y][Jugador.x]='O';
+          }
+        if(Contador%2!=0 && Mapita[Jugador.y][Jugador.x]=='O')
+          {
+        Mapita[Jugador.y][Jugador.x]='O';
+          }
+        if(Contador%2!=0 && Mapita[Jugador.y][Jugador.x]=='X')
+          {
+        Mapita[Jugador.y][Jugador.x]='X';
+          }
+        if(Contador%2==0 && Mapita[Jugador.y][Jugador.x]=='X')
+          {
+        Mapita[Jugador.y][Jugador.x]='X';
+          }
+      }
+    if(Salir==1)
+      {
+      exit(100);
+      }
+    if(Contador==3)
+      {
+        Mapita[11][21]='X';
+        if(Validar_Jugada(Mapita, x, y, &Minimo, Jugador)>500)
+          {
+            printf("\n\rERROR: Primer jugada invalida, las reglas del juego se encuentran al inicio del programa\n");
+            Minimo=0;
+            Contador=Contador-1;
+            Mapita[x][y]='+';
+            printf("\rPresiona el boton 'enter' para volver a intentar ");
+            Salir=-90;
+          }
+        Mapita[11][21]='O';
+      }
+    if(Salir==0)
+      {
+        Obtener_Puntos(Mapita, &Ganar1, &Ganar2, &Elim1, &Elim2, Jugador, Contador);
+        Salir=0;
+      }
+    Imprimir_Mapita(Mapita);
+      }
+    while(Ganar1<50&Ganar2<50&&Elim1<50&&Elim2<50);
+    if(Ganar1>=50||Elim1>=50)
+      {
+        if(Ganar1<100&&Elim1<50)
+      {
+        Ganar1=Ganar1+100;
+      }
+    if(Elim1>=50)
+      {
+    Ganar1=Ganar1+100;
+      }
+    Ganar1=Ganar1+Elim1;
+    Ganar1=Ganar1-Contador;
+    printf("\rGano el JUGADOR 1\n\n");
+    Calamardo2();
+      }
+    if(Ganar2>=50||Elim2>=50)
+      {
+    if(Ganar2<100&&Elim2<50)
+      {
+        Ganar2=Ganar2+100;
+      }
+    if(Elim2>=50)
+      {
+        Ganar2=Ganar2+100;
+      }
+    Ganar2=Ganar2+Elim2;
+    Ganar2=Ganar2-Contador;
+    printf("\rGano el JUGADOR 2 %d\n\n",Ganar2);
+    Calamardo1();
+      }
+    return(0);
+}
+
+void Hacer_Mapita(char Mapita[22][43])
+{
+    int i, j;
+    char letra='a';
+    for(i=0; i<22; i++)
+    {
+        for(j=0; j<43; j++)
+        {
+            Mapita[i][j]=' ';
+        }
+    }
+    for(i=1; i<22; i++)
+    {
+        for(j=2; j<42; j++)
+        {
+            Mapita[i][j]=' ';
+            j++;
+            Mapita[i][j]='+';
+        }
+    }
+
+    for(i=1; i<22; i++)
+    {
+        for(j=2; j<42; j++)
+        {
+            if((i==1)||(i==21))
+            {
+                Mapita[i][j]='-';
+                j++;
+                Mapita[i][j]='-';
+            }
+            if(j==2||j==41)
+            {
+                Mapita[i][j]='|';
+            }
+        }
+    }
+    for(j=0, i=2; i<21; i++, letra++)
+    {
+        Mapita[i][j]=letra;
+        Mapita[i][j+1]=' ';
+    }
+    letra='a';
+    for(j=3, i=0; j<41; j++, letra++)
+    {
+        Mapita[i][j]=letra;
+        j++;
+        Mapita[i][j]=' ';
+    }
+    Mapita[0][0]=' ';
+    Mapita[0][1]=' ';
+    Mapita[1][0]=' ';
+    Mapita[1][1]=' ';
+}
+
+void Imprimir_Mapita(char Mapita[22][43])
+{
+    int i, j;
+    printf("\x1b[2J"); //system(clear)
+    printf("\033[1;1H");
+    printf("\n\n\n\r\t\t\t\t\t   Pente\n\n\r");
+    for(i=0; i<22; i++)
+    {
+        for(j=0; j<43; j++)
+        {
+            if(j==0)
+            {
+                printf("\t\t\t");
+                }
+            printf("%c", Mapita[i][j]);
+        }
+        printf("\n\r");
+        }
+    printf("\n\r");
+}
+
+void Primer_Jugada(char Mapita[22][43])
+{
+    int i, j;
+    i=(21/2)+1;
+    j=(41/2)+2;
+    Mapita[i][j-1]='O';
+}
+
+int Hacer_jugada(char Mapita[22][43], int *Contador, COOR *Jugador, int *Salir)
+{
+  char x, y;
+  int push;
+  int i=76;
+  *Salir=0;
+    if(*Contador%2!=0)
+    {
+      printf("\n\rCoordenada x para jugador 2: \n\r"); 
+      servo.pulsewidth_us(500);
+    }
+    else
+    {
+        printf("\n\rCoordenada x para jugador 1: \n\r"); 
+        servo.pulsewidth_us(2500);
+    }
+    switch(CoordenadaX())
+    {
+        case 1: //a
+            x='a';
+            break;
+        case 2: //b
+            x='b';
+            break;     
+        case 3: //c
+            x='c';
+            break; 
+        case 4: //d
+            x='d';
+            break;
+        case 5: //e
+            x='e';
+            break;
+        case 6: //f
+            x='f';
+            break;
+        case 7: //g
+            x='g';
+            break;
+        case 8: //h
+            x='h';
+            break;
+        case 9: //i
+            x='i';
+            break;
+        case 10: //j
+            x='j';
+            break;
+        case 11: //k
+            x='k';
+            break;
+        case 12: //l
+            x='l';
+            break;
+        case 13: //m
+            x='m';
+            break;
+        case 14: //n
+            x='n';
+            break;
+        case 15: //o
+            x='o';
+            break;
+        case 16: //p
+            x='p';
+            break;
+        case 17: //q
+            x='q';
+            break;
+        case 18: //r
+            x='r';
+            break;
+        case 19: //s
+            x='s';
+            break;
+        case 20: //0
+            x='0';
+            break;
+    }
+    if(*Contador%2!=0)
+    {
+      printf("\n\rCoordenada y para jugador 2: \n\r");  
+    }
+    else
+    {
+        printf("\n\rCoordenada y para jugador 1: \n\r"); 
+    }
+    switch(CoordenadaY())
+    {
+        case 1: //a
+            y='a';
+            break;
+        case 2: //b
+            y='b';
+            break;     
+        case 3: //c
+            y='c';
+            break; 
+        case 4: //d
+            y='d';
+            break;
+        case 5: //e
+            y='e';
+            break;
+        case 6: //f
+            y='f';
+            break;
+        case 7: //g
+            y='g';
+            break;
+        case 8: //h
+            y='h';
+            break;
+        case 9: //i
+            y='i';
+            break;
+        case 10: //j
+            y='j';
+            break;
+        case 11: //k
+            y='k';
+            break;
+        case 12: //l
+            y='l';
+            break;
+        case 13: //m
+            y='m';
+            break;
+        case 14: //n
+            y='n';
+            break;
+        case 15: //o
+            y='o';
+            break;
+        case 16: //p
+            y='p';
+            break;
+        case 17: //q
+            y='q';
+            break;
+        case 18: //r
+            y='r';
+            break;
+        case 19: //s
+            y='s';
+            break;
+    }
+    printf("\n\rCoordenadas insertadas: %d, %d",x,y);
+        (*Jugador).x=x;
+        (*Jugador).y=y;
+        Jugador->y=Jugador->y-95;
+        if(Jugador->x!='s')
+          {
+        i=i+('s'-Jugador->x);
+          }
+        Jugador->x=Jugador->x-i;
+        if(*Contador%2==0 && Mapita[Jugador->y][Jugador->x]=='X')
+         {
+            printf("\n\rUsted no puede hacer su jugada por encima de otra ficha.\nPresiona <enter> para volver a intentarlo: \n");
+            enter.mode(PullUp);
+            while(push!=1)
+            {
+                push=enter;
+                wait(0.2);    
+            }
+            *Salir=-90;
+            return 0;
+            }
+            if(*Contador%2!=0 && Mapita[Jugador->y][Jugador->x]=='O')
+            {
+               printf("\n\rUsted no puede hacer su jugada por encima de otra ficha.\nPresiona <enter> para volver a intentarlo: \n");
+            enter.mode(PullUp);
+            while(push!=1)
+            {
+                push=enter;
+                wait(0.2);    
+            }
+            *Salir=-90;
+            return 0;
+            }
+        *Salir=0;
+        if(*Contador%2!=0)
+        {
+            Mapita[Jugador->y][Jugador->x]='X';
+        }
+        else
+        {
+            Mapita[Jugador->y][Jugador->x]='O';
+        }
+            *Contador=*Contador+1;
+    return 0;
+}
+
+void Obtener_Puntos(char Mapita[22][43], int *Ganar1, int *Ganar2, int *Elim1, int *Elim2, COOR Jugador, int Contador)
+{
+  int Puntos2=1, Puntos1=1, i=Jugador.y, j=Jugador.x, Total2=0, Total1=0, ContadorX1=0, ContadorX2=0;
+  Mapita[i][j]='P';
+  if(Contador%2==0)
+    {
+      RecursivaHor2(Mapita, i, j, &Puntos2,&ContadorX1, &ContadorX2 );
+      if(Puntos2==4&&Contador%2==0)
+        {
+      Total2=Total2+10;
+      printf("\n\fJUGADOR 2 tiene %d hilera de 4.\n", Total2);
+      }
+      if(Puntos2>=5&&Contador%2==0)
+        {
+      Total2=Total2+100;
+        }
+       if(ContadorX2>=1)
+      {
+        *Elim2=*Elim2+10;
+        printf("\n\f%d\n", *Elim2);
+        }
+      Puntos2=1;
+      Puntos1=1;
+      ContadorX2=0;
+      RecursivaVer2(Mapita, i, j, &Puntos2, &ContadorX1, &ContadorX2 );
+    if(Puntos2>=5&&Contador%2==0)
+    {
+        Total2=Total2+100;
+    }
+    if(Puntos2==4&&Contador%2==0)
+    {
+        Total2=Total2+10;
+    }
+     if(ContadorX2>=1)
+      {
+        *Elim2=*Elim2+10;
+        printf("\n\r%d\n", *Elim2);
+        }
+    Puntos2=1;
+    Puntos1=1;
+    ContadorX2=0;
+    RecursivaDiagoH2(Mapita, i, j, &Puntos2,&ContadorX1, &ContadorX2 );
+    if(Puntos2>=5&&Contador%2==0)
+    {
+        Total2=Total2+100;
+    }
+    if(Puntos2==4&&Contador%2==0)
+    {
+        Total2=Total2+10;
+    }
+     if(ContadorX2>=1)
+      {
+        *Elim2=*Elim2+10;
+        printf("\n\r%d\n", *Elim2);
+        }
+    Puntos2=1;
+    Puntos1=1;
+    ContadorX2=0;
+    RecursivaDiagoV2(Mapita, i, j, &Puntos2,  &ContadorX1, &ContadorX2 );
+    if(Puntos2>=5&&Contador%2==0)
+    {
+        Total2=Total2+100;
+    }
+    if(Puntos2==4&&Contador%2==0)
+      {
+        Total2=Total2+10;
+      }
+    if(ContadorX2>=1)
+      {
+        *Elim2=*Elim2+10;
+        printf("\n\r%d\n", *Elim2);
+        }
+    Puntos2=1;
+    Puntos1=1;
+    *Ganar2=*Ganar2+Total2;
+    ContadorX2=0;
+    }
+    else
+    {
+      RecursivaHor1(Mapita, i, j, &Puntos1, &ContadorX1, &ContadorX2 );
+      if(Puntos1==4)
+        {
+      Total1=Total1+10;
+      printf("\n\r%d\n", *Ganar1);
+      }
+      if(Puntos1>=5)
+        {
+      Total1=Total1+100;
+        }
+      if(ContadorX1>=1)
+      {
+        *Elim1=*Elim1+10;
+        printf("\n\r%d\n", *Elim1);
+        }
+      Puntos2=1;
+      Puntos1=1;
+        ContadorX1=0;
+      RecursivaVer1(Mapita, i, j, &Puntos1, &ContadorX1, &ContadorX2 );
+      if(Puntos1==4)
+        {
+      Total1=Total1+10;
+      printf("\n\r%d\n", *Ganar1);
+      }
+        if(Puntos1>=5)
+        {
+            Total1=Total1+100;
+            printf("\n\r%d\n", *Ganar1);
+            }
+    if(ContadorX1>=1)
+      {
+        *Elim1=*Elim1+10;
+        printf("\n\r%d\n", *Elim1);
+         }
+        Puntos2=1;
+        Puntos1=1;
+      ContadorX1=0;
+        RecursivaDiagoH1(Mapita, i, j, &Puntos1, &ContadorX1, &ContadorX2 );
+        if(Puntos1>=5)
+        {
+            Total1=Total1+100;
+        }
+        if(Puntos1==4)
+        {
+            Total1=Total1+10;
+            printf("\n\r%d\n", *Ganar1);
+            }
+    if(ContadorX1>=1)
+      {
+        *Elim1=*Elim1+10;
+        printf("\n\r%d\n", *Elim1);
+       }
+        Puntos2=1;
+        Puntos1=1;
+      ContadorX1=0;
+        RecursivaDiagoV1(Mapita, i, j, &Puntos1, &ContadorX1, &ContadorX2 );
+        if(Puntos1>=5)
+        {
+            Total1=Total1+100;
+        }
+        if(Puntos1==4)
+        {
+            Total1=Total1+10;
+            printf("\n\r%d\n", *Ganar1); 
+            }
+    if(ContadorX1>=1)
+      {
+        *Elim1=*Elim1+10;
+        printf("\n\r%d\n", *Elim1);
+        }
+        Puntos2=1;
+        Puntos1=1;
+        *Ganar1=*Ganar1+Total1;
+        ContadorX1=0;
+    }
+    if(Contador%2!=0)
+    {
+        Mapita[i][j]='O';
+    }
+    else
+    {
+        Mapita[i][j]='X';
+    }
+    printf("\n\r%d\n", *Ganar1);
+}
+        
+ int RecursivaHor2(char Mapita[22][43], int i, int j, int *Puntos2, int *ContadorX1, int *ContadorX2 )
+{
+    if(Mapita[i][j+2]=='O'&&Mapita[i][j+4]=='O'&&Mapita[i][j+6]=='X'&&Mapita[i][j]=='P')
+    {
+        Mapita[i][j+2]='+';
+        Mapita[i][j+4]='+';
+        *ContadorX2=*ContadorX2+1;
+     
+    }
+    if(Mapita[i][j-2]=='O'&&Mapita[i][j-4]=='O'&&Mapita[i][j-6]=='X'&&Mapita[i][j]=='P')
+    {
+        Mapita[i][j-2]='+';
+        Mapita[i][j-4]='+';
+        *ContadorX2=*ContadorX2+1;
+     
+    }
+    if(Mapita[i][j+2]=='X')
+    {
+        *Puntos2=*Puntos2+1;
+        Mapita[i][j+2]='+';
+        RecursivaHor2(Mapita, i, j+2, Puntos2, ContadorX1, ContadorX2 );
+        Mapita[i][j+2]='X';
+    }
+    if(Mapita[i][j-2]=='X')
+    {
+        *Puntos2=*Puntos2+1;
+        Mapita[i][j-2]='+';
+        RecursivaHor2(Mapita, i, j-2, Puntos2, ContadorX1, ContadorX2 );
+        Mapita[i][j-2]='X';
+    }
+    return 0;
+}
+
+int RecursivaHor1(char Mapita[22][43], int i, int j,  int *Puntos1, int *ContadorX1, int *ContadorX2 )
+{
+    if(Mapita[i][j+2]=='X'&&Mapita[i][j+4]=='X'&&Mapita[i][j+6]=='O'&&Mapita[i][j]=='P')
+    {
+        Mapita[i][j+2]='+';
+        Mapita[i][j+4]='+';
+        *ContadorX1=*ContadorX1+1;
+     
+    }
+    if(Mapita[i][j-2]=='X'&&Mapita[i][j-4]=='X'&&Mapita[i][j-6]=='O'&&Mapita[i][j]=='P')
+    {
+        Mapita[i][j-2]='+';
+        Mapita[i][j-4]='+';
+        *ContadorX1=*ContadorX1+1;
+     
+    }
+    if(Mapita[i][j+2]=='O')
+    {
+        *Puntos1=*Puntos1+1;
+        Mapita[i][j+2]='+';
+        RecursivaHor1(Mapita, i, j+2, Puntos1, ContadorX1, ContadorX2 );
+        Mapita[i][j+2]='O';
+    }
+    if(Mapita[i][j-2]=='O')
+    {
+        *Puntos1=*Puntos1+1;
+        Mapita[i][j-2]='+';
+        RecursivaHor1(Mapita, i, j-2, Puntos1, ContadorX1, ContadorX2 );
+        Mapita[i][j-2]='O';
+    }
+    return 0;
+}
+
+int RecursivaVer1(char Mapita[22][43], int i, int j, int *Puntos1, int *ContadorX1, int *ContadorX2 )
+{
+    if(Mapita[i+1][j]=='X'&&Mapita[i+2][j]=='X'&&Mapita[i+3][j]=='O'&&Mapita[i][j]=='P')
+    {
+        Mapita[i+1][j]='+';
+        Mapita[i+2][j]='+';
+        *ContadorX1=*ContadorX1+1;
+     
+    }
+    if(Mapita[i-1][j]=='X'&&Mapita[i-2][j]=='X'&&Mapita[i-3][j]=='O'&&Mapita[i][j]=='P')
+    {
+        Mapita[i-1][j]='+';
+        Mapita[i-2][j]='+';
+        *ContadorX1=*ContadorX1+1;
+     
+    }
+    if(Mapita[i+1][j]=='O')
+    {
+        *Puntos1=*Puntos1+1;
+        Mapita[i+1][j]='+';
+        RecursivaVer1(Mapita, i+1, j, Puntos1, ContadorX1, ContadorX2 );
+        Mapita[i+1][j]='O';
+    }
+    if(Mapita[i-1][j]=='O')
+    {
+        *Puntos1=*Puntos1+1;
+        Mapita[i-1][j]='+';
+        RecursivaVer1(Mapita, i-1, j, Puntos1, ContadorX1, ContadorX2 );
+        Mapita[i-1][j]='O';
+    }
+    return 0;
+}
+
+int RecursivaVer2(char Mapita[22][43], int i, int j, int *Puntos2, int *ContadorX1, int *ContadorX2 )
+{
+    if(Mapita[i+1][j]=='O'&&Mapita[i+2][j]=='O'&&Mapita[i+3][j]=='X'&&Mapita[i][j]=='P')
+    {
+        *ContadorX2=*ContadorX2+1;
+        Mapita[i+1][j]='+';
+        Mapita[i+2][j]='+';
+     
+    }
+    if(Mapita[i-1][j]=='O'&&Mapita[i-2][j]=='O'&&Mapita[i-3][j]=='X'&&Mapita[i][j]=='P')
+    {
+        *ContadorX2=*ContadorX2+1;
+        Mapita[i-1][j]='+';
+        Mapita[i-2][j]='+';
+     
+    }
+    if(Mapita[i+1][j]=='X')
+    {
+        *Puntos2=*Puntos2+1;
+        Mapita[i+1][j]='+';
+        RecursivaVer2(Mapita, i+1, j, Puntos2, ContadorX1, ContadorX2 );
+        Mapita[i+1][j]='X';
+    }
+    if(Mapita[i-1][j]=='X')
+    {
+        *Puntos2=*Puntos2+1;
+        Mapita[i-1][j]='+';
+        RecursivaVer2(Mapita, i-1, j, Puntos2, ContadorX1, ContadorX2 );
+        Mapita[i-1][j]='X';
+    }
+    return 0;
+}
+
+int RecursivaDiagoH1(char Mapita[22][43], int i, int j, int *Puntos1, int *ContadorX1, int *ContadorX2 )
+{
+    if(Mapita[i+1][j+2]=='X'&&Mapita[i+2][j+4]=='X'&&Mapita[i+3][j+6]=='O'&&Mapita[i][j]=='P')
+    {
+        Mapita[i+1][j+2]='+';
+        Mapita[i+2][j+4]='+';
+        *ContadorX1=*ContadorX1+1;
+     
+    }
+    if(Mapita[i-1][j-2]=='X'&&Mapita[i-2][j-4]=='X'&&Mapita[i-3][j-6]=='O'&&Mapita[i][j]=='P')
+    {
+        Mapita[i-1][j-2]='+';
+        Mapita[i-2][j-4]='+';
+        *ContadorX1=*ContadorX1+1;
+     
+    }
+    if(Mapita[i+1][j+2]=='O')
+    {
+        *Puntos1=*Puntos1+1;
+        Mapita[i+1][j+2]='+';
+        RecursivaDiagoH1(Mapita, i+1, j+2, Puntos1, ContadorX1, ContadorX2 );
+        Mapita[i+1][j+2]='O';
+    }
+    if(Mapita[i-1][j-2]=='O')
+    {
+        *Puntos1=*Puntos1+1;
+        Mapita[i-1][j-2]='+';
+        RecursivaDiagoH1(Mapita, i-1, j-2,  Puntos1, ContadorX1, ContadorX2 );
+        Mapita[i-1][j-2]='O';
+    }
+    return 0;
+}
+
+int RecursivaDiagoH2(char Mapita[22][43], int i, int j, int *Puntos2, int *ContadorX1, int *ContadorX2 )
+{
+    if(Mapita[i+1][j+2]=='O'&&Mapita[i+2][j+4]=='O'&&Mapita[i+3][j+6]=='X'&&Mapita[i][j]=='P')
+    {
+        *ContadorX2=*ContadorX2+1;
+        Mapita[i+1][j+2]='+';
+        Mapita[i+2][j+4]='+';
+     
+    }
+    if(Mapita[i-1][j-2]=='O'&&Mapita[i-2][j-4]=='O'&&Mapita[i-3][j-6]=='X'&&Mapita[i][j]=='P')
+    {
+        *ContadorX2=*ContadorX2+1;
+        Mapita[i-1][j-2]='+';
+        Mapita[i-2][j-4]='+';
+     
+    }
+    if(Mapita[i+1][j+2]=='X')
+    {
+        *Puntos2=*Puntos2+1;
+        Mapita[i+1][j+2]='+';
+        RecursivaDiagoH2(Mapita, i+1, j+2, Puntos2, ContadorX1, ContadorX2 );
+        Mapita[i+1][j+2]='X';
+    }
+    if(Mapita[i-1][j-2]=='X')
+    {
+        *Puntos2=*Puntos2+1;
+        Mapita[i-1][j-2]='+';
+        RecursivaDiagoH2(Mapita, i-1, j-2, Puntos2, ContadorX1, ContadorX2 );
+        Mapita[i-1][j-2]='X';
+    }
+    return 0;
+}
+
+int RecursivaDiagoV2(char Mapita[22][43], int i, int j, int *Puntos2, int *ContadorX1, int *ContadorX2 )
+{
+    if(Mapita[i+1][j-2]=='O'&&Mapita[i+2][j-4]=='O'&&Mapita[i+3][j-6]=='X'&&Mapita[i][j]=='P')
+    {
+        Mapita[i+1][j-2]='+';
+        Mapita[i+2][j-4]='+';
+        *ContadorX2=*ContadorX2+1;
+     
+    }
+    if(Mapita[i-1][j+2]=='O'&&Mapita[i-2][j+4]=='O'&&Mapita[i-3][j+6]=='X'&&Mapita[i][j]=='P')
+    {
+        Mapita[i-1][j+2]='+';
+        Mapita[i-2][j+4]='+';
+        *ContadorX2=*ContadorX2+1;
+     
+    }
+    if(Mapita[i+1][j-2]=='X')
+    {
+        *Puntos2=*Puntos2+1;
+        Mapita[i+1][j-2]='+';
+        RecursivaDiagoV2(Mapita, i+1, j-2, Puntos2,  ContadorX1, ContadorX2 );
+        Mapita[i+1][j-2]='X';
+    }
+    if(Mapita[i-1][j+2]=='X')
+    {
+        *Puntos2=*Puntos2+1;
+        Mapita[i-1][j+2]='+';
+        RecursivaDiagoV2(Mapita, i-1, j+2, Puntos2, ContadorX1, ContadorX2 );
+        Mapita[i-1][j+2]='X';
+    }
+    return 0;
+}
+
+int RecursivaDiagoV1(char Mapita[22][43], int i, int j, int *Puntos1, int *ContadorX1, int *ContadorX2)
+{
+    if(Mapita[i+1][j-2]=='X'&&Mapita[i+2][j-4]=='X'&&Mapita[i+3][j-6]=='O'&&Mapita[i][j]=='P')
+    {
+        Mapita[i+1][j-2]='+';
+        Mapita[i+2][j-4]='+';
+        *ContadorX1=*ContadorX1+1;
+     
+    }
+    if(Mapita[i-1][j+2]=='X'&&Mapita[i-2][j+4]=='X'&&Mapita[i-3][j+6]=='O'&&Mapita[i][j]=='P')
+    {
+        Mapita[i-1][j+2]='+';
+        Mapita[i-2][j+4]='+';
+        *ContadorX1=*ContadorX1+1;
+     
+    }
+    if(Mapita[i+1][j-2]=='O')
+    {
+        *Puntos1=*Puntos1+1;
+        Mapita[i+1][j-2]='+';
+        RecursivaDiagoV1(Mapita, i+1, j-2, Puntos1, ContadorX1, ContadorX2 );
+        Mapita[i+1][j-2]='O';
+    }
+    if(Mapita[i-1][j+2]=='O')
+    {
+        *Puntos1=*Puntos1+1;
+        Mapita[i-1][j+2]='+';
+        RecursivaDiagoV1(Mapita, i-1, j+2,  Puntos1, ContadorX1, ContadorX2 );
+        Mapita[i-1][j+2]='O';
+    }
+    return 0;
+}
+
+int Validar_Jugada(char Mapita[22][43], int x, int y, int *Minimo, COOR Jugador)
+{
+  if((Mapita[x+1][y]=='O'||Mapita[x-1][y]=='O'||Mapita[x][y+2]=='O'||Mapita[x][y-2]=='O')&&*Minimo<3)
+    {
+      Mapita[Jugador.y][Jugador.x]='+';
+      *Minimo=1000;
+      return *Minimo;
+    }
+  if(Mapita[x+1][y]=='+'&&*Minimo<3) //Camino hacia abajo
+    {
+      Mapita[x+1][y]='X';
+      *Minimo=*Minimo+1;
+      Validar_Jugada(Mapita, x+1, y, Minimo, Jugador);
+      Mapita[x+1][y]='+';
+      *Minimo=*Minimo-1;
+    }
+  if(Mapita[x-1][y]=='+'&&*Minimo<3) //Camino hacia arriba
+    {
+      Mapita[x-1][y]='X';
+      *Minimo=*Minimo+1;
+      Validar_Jugada(Mapita, x-1, y, Minimo, Jugador);
+      Mapita[x-1][y]='+';
+      *Minimo=*Minimo-1;
+
+    }
+  if(Mapita[x][y+2]=='+'&&*Minimo<3) //Camino a la derecha
+    {
+      Mapita[x][y+2]='X';
+      *Minimo=*Minimo+1;
+      Validar_Jugada(Mapita, x, y+2, Minimo, Jugador);
+      Mapita[x][y+2]='+';
+      *Minimo=*Minimo-1;
+    }
+  if(Mapita[x][y-2]=='+'&&*Minimo<3) //Camino a la izquierda
+    {
+      Mapita[x][y-2]='X';
+      *Minimo=*Minimo+1;
+      Validar_Jugada(Mapita, x, y-2, Minimo, Jugador);
+      Mapita[x][y-2]='+';
+      *Minimo=*Minimo-1;
+    }
+  if(Mapita[x-1][y-2]=='+'&&*Minimo<2) //Camino a la izquierda
+    {
+      Mapita[x-1][y-2]='X';
+      *Minimo=*Minimo+1;
+      Validar_Jugada(Mapita, x-1, y-2, Minimo, Jugador);
+      Mapita[x-1][y-2]='+';
+      *Minimo=*Minimo-1;
+    }
+  if(Mapita[x+1][y-2]=='+'&&*Minimo<2) //Camino a la izquierda
+    {
+      Mapita[x+1][y-2]='X';
+      *Minimo=*Minimo+1;
+      Validar_Jugada(Mapita, x+1, y-2, Minimo, Jugador);
+      Mapita[x+1][y-2]='+';
+      *Minimo=*Minimo-1;
+    }
+  if(Mapita[x+1][y+2]=='+'&&*Minimo<3) //Camino a la izquierda
+    {
+      Mapita[x+1][y+2]='X';
+      *Minimo=*Minimo+1;
+      Validar_Jugada(Mapita, x+1, y+2, Minimo, Jugador);
+      Mapita[x+1][y+2]='+';
+      *Minimo=*Minimo-1;
+    }
+  if(Mapita[x-1][y+2]=='+'&&*Minimo<3) //Camino a la izquierda
+    {
+      Mapita[x-1][y+2]='X';
+      *Minimo=*Minimo+1;
+      Validar_Jugada(Mapita, x-1, y+2, Minimo, Jugador);
+      Mapita[x-1][y+2]='+';
+      *Minimo=*Minimo-1;
+    }
+  return *Minimo;
+
+}
+
+void Calamardo1()
+{
+  printf("\n\rJugador 1 PERDISTE!\n");
+  printf("\r        .--'''''''''--. \n");
+  printf("\r     .'      .---.      '.\n");
+  printf("\r   /    .-----------.    |\n");
+  printf("\r  /        .-----.        | \n");
+  printf("\r  |       .-.   .-.       | \n");
+  printf("\r  |     /    | /   |      | \n");
+  printf("\r  |    | .-. | .-. |     / \n");
+  printf("\r   '-._| | | | | | |_.-'\n");
+  printf("\r       | '-' | '-' |\n");
+  printf("\r        |___/ |___/\n");
+  printf("\r     _.-'  /   |  `-._\n");
+  printf("\r   .' _.--|     |--._ '.\n");
+  printf("\r   ' _...-|     |-..._ '\n");
+  printf("\r          |     |\n");
+  printf("\r          '.___.'\n");
+  printf("\r            | |\n");
+  printf("\r           _| |_\n");
+  printf("\r          /|( )/|\n");
+  printf("\r         /  ` '  |\n");
+  printf("\r        | |     | |\n");
+  printf("\r        '-'     '-'\n");
+  printf("\r        | |     | |\n");
+  printf("\r        | |     | |\n");
+  printf("\r        | |-----| |\n");
+  printf("\r     .`/  |     | |/`.\n");
+  printf("\r     |    |     |    |\n");
+  printf("\r     '._.'| .-. |'._.'\n");
+  printf("\r          | | /\n");
+  printf("\r          | | |\n");
+  printf("\r          | | |\n");
+  printf("\r          | | |\n");
+  printf("\r         /| | ||\n");
+  printf("\r       .'_| | |_`.\n");
+  printf("\r       `. | | | .'\n");
+  printf("\r      /  |  |   \n");
+  printf("\r    /o`.-'  / |  `-.`o|\n");
+  printf("\r   /o  o| .'   `. /o  o|\n");
+  printf("\r   `.___.'       `.___.'\n");
+  printf("\r Presiona enter para continuar...\n\r");
+  int push=0;
+  enter.mode(PullUp);
+    while(push!=1)
+    {
+        push=enter;
+        wait(0.2);    
+    }
+}
+
+void Calamardo2()
+{
+  printf("\n\rJugador 2 PERDISTE!\n");
+  printf("\r        .--'''''''''--. \n");
+  printf("\r     .'      .---.      '.\n");
+  printf("\r   /    .-----------.    |\n");
+  printf("\r  /        .-----.        | \n");
+  printf("\r  |       .-.   .-.       | \n");
+  printf("\r  |     /    | /   |      | \n");
+  printf("\r  |    | .-. | .-. |     / \n");
+  printf("\r   '-._| | | | | | |_.-'\n");
+  printf("\r       | '-' | '-' |\n");
+  printf("\r        |___/ |___/\n");
+  printf("\r     _.-'  /   |  `-._\n");
+  printf("\r   .' _.--|     |--._ '.\n");
+  printf("\r   ' _...-|     |-..._ '\n");
+  printf("\r          |     |\n");
+  printf("\r          '.___.'\n");
+  printf("\r            | |\n");
+  printf("\r           _| |_\n");
+  printf("\r          /|( )/|\n");
+  printf("\r         /  ` '  |\n");
+  printf("\r        | |     | |\n");
+  printf("\r        '-'     '-'\n");
+  printf("\r        | |     | |\n");
+  printf("\r        | |     | |\n");
+  printf("\r        | |-----| |\n");
+  printf("\r     .`/  |     | |/`.\n");
+  printf("\r     |    |     |    |\n");
+  printf("\r     '._.'| .-. |'._.'\n");
+  printf("\r          | | /\n");
+  printf("\r          | | |\n");
+  printf("\r          | | |\n");
+  printf("\r          | | |\n");
+  printf("\r         /| | ||\n");
+  printf("\r       .'_| | |_`.\n");
+  printf("\r       `. | | | .'\n");
+  printf("\r      /  |  |   \n");
+  printf("\r    /o`.-'  / |  `-.`o|\n");
+  printf("\r   /o  o| .'   `. /o  o|\n");
+  printf("\r   `.___.'       `.___.'\n");
+  printf("\r Presiona enter para continuar...\n\r");
+  int push=0;
+  enter.mode(PullUp);
+    while(push!=1)
+    {
+        push=enter;
+        wait(0.2);    
+    }
+}
+
+int SensorInicio()
+{
+    wait(1);
+    float mi=0;
+    printf("\rToma el sensor de proximidad para continuar...\n");
+    while(mi<2.5) {
+        mi=micro.read();
+        mi=mi*3.3;
+    }
+    return 1;
+}
+
+void RobotInicio() 
+{
+    servo.pulsewidth_us(500);
+    wait(1.5);
+    servo.pulsewidth_us(2500);
+}
+
+int CoordenadaX()
+{
+    a1=0;
+    b1=0;
+    c1=0;
+    d1=0;
+    e1=0;
+    f1=0;
+    g1=0;
+    while(1)
+    {
+            for(int i=0; i<=19; i+=1)
+            {
+                wait(1);
+                switch(i)
+                {
+                    case 0: //a
+                        a1=1;
+                        b1=1;
+                        c1=1;
+                        d1=0;
+                        e1=1;
+                        f1=1;
+                        g1=1;
+                        break;
+                    case 1: //b
+                        a1=0;
+                        b1=0;
+                        c1=1;
+                        d1=1;
+                        e1=1;
+                        f1=1;
+                        g1=1;
+                        break;
+                    case 2: //c
+                        a1=1;
+                        b1=0;
+                        c1=0;
+                        d1=1;
+                        e1=1;
+                        f1=1;
+                        g1=0;
+                        break;
+                    case 3: //d
+                        a1=0;
+                        b1=1;
+                        c1=1;
+                        d1=1;
+                        e1=1;
+                        f1=0;
+                        g1=1;
+                        break;
+                    case 4: //e
+                        a1=1;
+                        b1=0;
+                        c1=0;
+                        d1=1;
+                        e1=1;
+                        f1=1;
+                        g1=1;
+                        break;
+                    case 5: //f
+                        a1=1;
+                        b1=0;
+                        c1=0;
+                        d1=0;
+                        e1=1;
+                        f1=1;
+                        g1=1;
+                        break;
+                    case 6: //g
+                        a1=1;
+                        b1=1;
+                        c1=1;
+                        d1=1;
+                        e1=0;
+                        f1=1;
+                        g1=1;
+                        break;
+                    case 7: //h
+                        a1=0;
+                        b1=0;
+                        c1=1;
+                        d1=0;
+                        e1=1;
+                        f1=1;
+                        g1=1;
+                        break;
+                    case 8: //i
+                        a1=0;
+                        b1=0;
+                        c1=0;
+                        d1=0;
+                        e1=1;
+                        f1=1;
+                        g1=0;
+                        break;
+                    case 9: //j
+                        a1=0;
+                        b1=1;
+                        c1=1;
+                        d1=1;
+                        e1=1;
+                        f1=0;
+                        g1=0;
+                        break;
+                    case 10: //k
+                        a1=0;
+                        b1=0;
+                        c1=0;
+                        d1=1;
+                        e1=1;
+                        f1=1;
+                        g1=1;
+                        break;
+                    case 11: //l
+                        a1=0;
+                        b1=0;
+                        c1=0;
+                        d1=1;
+                        e1=1;
+                        f1=1;
+                        g1=0;
+                        break;
+                    case 12: //m
+                        a1=0;
+                        b1=0;
+                        c1=1;
+                        d1=0;
+                        e1=1;
+                        f1=1;
+                        g1=1;
+                        break;
+                    case 13: //n
+                        a1=0;
+                        b1=0;
+                        c1=1;
+                        d1=0;
+                        e1=1;
+                        f1=0;
+                        g1=1;
+                        break;
+                    case 14: //o
+                        a1=0;
+                        b1=0;
+                        c1=1;
+                        d1=1;
+                        e1=1;
+                        f1=0;
+                        g1=1;
+                        break;
+                    case 15: //p
+                        a1=1;
+                        b1=1;
+                        c1=0;
+                        d1=0;
+                        e1=1;
+                        f1=1;
+                        g1=1;
+                        break;
+                    case 16: //q
+                        a1=1;
+                        b1=1;
+                        c1=1;
+                        d1=0;
+                        e1=0;
+                        f1=1;
+                        g1=1;
+                        break;
+                    case 17: //r
+                        a1=0;
+                        b1=0;
+                        c1=0;
+                        d1=0;
+                        e1=1;
+                        f1=0;
+                        g1=1;
+                        break;
+                    case 18: //s
+                        a1=1;
+                        b1=0;
+                        c1=1;
+                        d1=1;
+                        e1=0;
+                        f1=1;
+                        g1=1;
+                        break;
+                    }
+                        int pbX=0;
+                        pushX.mode(PullUp);
+                        pbX=pushX;
+                        if(pbX==1)return i+1;
+                }
+            } 
+    }
+
+
+int CoordenadaY()
+{
+    a2=0;
+    b2=0;
+    c2=0;
+    d2=0;
+    e2=0;
+    f2=0;
+    g2=0;
+    while(1)
+    {
+            for(int j=0; j<=19; j+=1)
+            {
+                wait(1);
+                switch(j)
+                {
+                    case 0: //a
+                        a2=1;
+                        b2=1;
+                        c2=1;
+                        d2=0;
+                        e2=1;
+                        f2=1;
+                        g2=1;
+                        break;
+                    case 1: //b
+                        a2=0;
+                        b2=0;
+                        c2=1;
+                        d2=1;
+                        e2=1;
+                        f2=1;
+                        g2=1;
+                        break;
+                    case 2: //c
+                        a2=1;
+                        b2=0;
+                        c2=0;
+                        d2=1;
+                        e2=1;
+                        f2=1;
+                        g2=0;
+                        break;
+                    case 3: //d
+                        a2=0;
+                        b2=1;
+                        c2=1;
+                        d2=1;
+                        e2=1;
+                        f2=0;
+                        g2=1;
+                        break;
+                    case 4: //e
+                        a2=1;
+                        b2=0;
+                        c2=0;
+                        d2=1;
+                        e2=1;
+                        f2=1;
+                        g2=1;
+                        break;
+                    case 5: //f
+                        a2=1;
+                        b2=0;
+                        c2=0;
+                        d2=0;
+                        e2=1;
+                        f2=1;
+                        g2=1;
+                        break;
+                    case 6: //g
+                        a2=1;
+                        b2=1;
+                        c2=1;
+                        d2=1;
+                        e2=0;
+                        f2=1;
+                        g2=1;
+                        break;
+                    case 7: //h
+                        a2=0;
+                        b2=0;
+                        c2=1;
+                        d2=0;
+                        e2=1;
+                        f2=1;
+                        g2=1;
+                        break;
+                    case 8: //i
+                        a2=0;
+                        b2=0;
+                        c2=0;
+                        d2=0;
+                        e2=1;
+                        f2=1;
+                        g2=0;
+                        break;
+                    case 9: //j
+                        a2=0;
+                        b2=1;
+                        c2=1;
+                        d2=1;
+                        e2=1;
+                        f2=0;
+                        g2=0;
+                        break;
+                    case 10: //k
+                        a2=0;
+                        b2=0;
+                        c2=0;
+                        d2=1;
+                        e2=1;
+                        f2=1;
+                        g2=1;
+                        break;
+                    case 11: //l
+                        a2=0;
+                        b2=0;
+                        c2=0;
+                        d2=1;
+                        e2=1;
+                        f2=1;
+                        g2=0;
+                        break;
+                    case 12: //m
+                        a2=0;
+                        b2=0;
+                        c2=1;
+                        d2=0;
+                        e2=1;
+                        f2=1;
+                        g2=1;
+                        break;
+                    case 13: //n
+                        a2=0;
+                        b2=0;
+                        c2=1;
+                        d2=0;
+                        e2=1;
+                        f2=0;
+                        g2=1;
+                        break;
+                    case 14: //o
+                        a2=0;
+                        b2=0;
+                        c2=1;
+                        d2=1;
+                        e2=1;
+                        f2=0;
+                        g2=1;
+                        break;
+                    case 15: //p
+                        a2=1;
+                        b2=1;
+                        c2=0;
+                        d2=0;
+                        e2=1;
+                        f2=1;
+                        g2=1;
+                        break;
+                    case 16: //q
+                        a2=1;
+                        b2=1;
+                        c2=1;
+                        d2=0;
+                        e2=0;
+                        f2=1;
+                        g2=1;
+                        break;
+                    case 17: //r
+                        a2=0;
+                        b2=0;
+                        c2=0;
+                        d2=0;
+                        e2=1;
+                        f2=0;
+                        g2=1;
+                        break;
+                    case 18: //s
+                        a2=1;
+                        b2=0;
+                        c2=1;
+                        d2=1;
+                        e2=0;
+                        f2=1;
+                        g2=1;
+                        break;
+                    }
+                        int pbY=0;
+                        pushY.mode(PullUp);
+                        pbY=pushY;
+                        if(pbY==1)return j+1;
+                }
+            } 
+    }
